@@ -10,11 +10,11 @@ import plotly.express as px
 # -----------------------------------
 # 1. Load and preprocess global data
 # -----------------------------------
-# 从本地 CSV 文件中加载全球数据（这里假设数据已合并在一个文件中）
+
 df_global = pd.read_csv("dataset/global_covid19_dataset.csv")
 df_global["Date"] = pd.to_datetime(df_global["Date"])
 
-# 按 "Country/Region" 和 "Date" 聚合数据
+
 df_grouped = df_global.groupby(["Country/Region", "Date"]).agg({
     "Confirmed": "sum",
     "Deaths": "sum",
@@ -26,10 +26,10 @@ df_grouped["New_Confirmed"] = df_grouped.groupby("Country/Region")["Confirmed"].
 df_grouped["New_Deaths"] = df_grouped.groupby("Country/Region")["Deaths"].diff().fillna(0)
 df_grouped["New_Recovered"] = df_grouped.groupby("Country/Region")["Recovered"].diff().fillna(0)
 
-# 获取所有国家列表
+
 countries = sorted(df_grouped["Country/Region"].unique())
 
-# 计算最新日期（视为当日数据）并过滤最新数据
+
 latest_date = df_grouped["Date"].max()
 df_latest = df_grouped[df_grouped["Date"] == latest_date]
 
@@ -69,7 +69,7 @@ global_layout = dbc.Container([
     dbc.Row(dbc.Col(dcc.Graph(id="daily-new-graph"), width=12))
 ], fluid=True, style={"backgroundColor": "#f7f7f7", "padding": "20px"})
 
-# US Map layout – US county-level map embedded via Iframe (确保文件位于 assets/us_covid_county_map.html)
+
 us_map_layout = dbc.Container([
     dbc.Row(dbc.Col(html.H2("US COVID-19 County Map", className="text-center mb-4"), width=12)),
     dbc.Row(dbc.Col(html.Iframe(
@@ -78,13 +78,13 @@ us_map_layout = dbc.Container([
     ), width=12))
 ], fluid=True)
 
-# Global Heatmap layout – 以 choropleth 显示全球累计确诊情况
+
 global_heatmap_layout = dbc.Container([
     dbc.Row(dbc.Col(html.H2("Global COVID-19 Heatmap", className="text-center mb-4"), width=12)),
     dbc.Row(dbc.Col(dcc.Graph(id="global-heatmap"), width=12))
 ], fluid=True)
 
-# Daily Detailed Info layout – 优化后的页面
+
 daily_info_layout = dbc.Container([
     dbc.Row(
         dbc.Col(html.H1("Daily COVID-19 Detailed Information", className="text-center text-primary mb-4"), width=12)

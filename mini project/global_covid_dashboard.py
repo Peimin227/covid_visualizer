@@ -8,10 +8,9 @@ import plotly.graph_objs as go
 import plotly.express as px
 
 # -----------------------------------
-# 1. Real-time Data Fetching and Processing from disease.sh API
+# 1. Real-time Data Fetching and Processing from disease.sh API (历史数据部分)
 # -----------------------------------
 def fetch_all_global_data():
- 
     url = "https://disease.sh/v3/covid-19/historical?lastdays=all"
     response = requests.get(url)
     data = response.json()
@@ -41,7 +40,6 @@ def fetch_all_global_data():
     return df
 
 def process_global_data():
-
     df = fetch_all_global_data()
     df_grouped = df.groupby(["Country/Region", "Date"]).agg({
         "Confirmed": "sum",
@@ -55,7 +53,18 @@ def process_global_data():
     return df_grouped
 
 
-df_grouped = process_global_data()
+df_global = pd.read_csv("dataset/global_covid19_dataset.csv")
+df_global["Date"] = pd.to_datetime(df_global["Date"])
+df_grouped = df_global.groupby(["Country/Region", "Date"]).agg({
+    "Confirmed": "sum",
+    "Deaths": "sum",
+    "Recovered": "sum"
+}).reset_index()
+df_grouped = df_grouped.sort_values(["Country/Region", "Date"])
+df_grouped["New_Confirmed"] = df_grouped.groupby("Country/Region")["Confirmed"].diff().fillna(0)
+df_grouped["New_Deaths"] = df_grouped.groupby("Country/Region")["Deaths"].diff().fillna(0)
+df_grouped["New_Recovered"] = df_grouped.groupby("Country/Region")["Recovered"].diff().fillna(0)
+
 countries = sorted(df_grouped["Country/Region"].unique())
 latest_date = df_grouped["Date"].max()
 df_latest = df_grouped[df_grouped["Date"] == latest_date]
@@ -64,7 +73,7 @@ df_latest = df_grouped[df_grouped["Date"] == latest_date]
 # 2. Define page layouts
 # -----------------------------------
 
-# Global Dashboard layout
+
 global_layout = dbc.Container([
     dbc.Row(
         dbc.Col(html.H2("Global COVID-19 Data Dashboard", className="text-center mb-4"), width=12)
@@ -128,7 +137,7 @@ daily_info_layout = dbc.Container([
                         multi=False,
                         style={"font-size": "16px"}
                     ),
-                    
+                  
                     dcc.Interval(id="interval-summary", interval=60000, n_intervals=0)
                 ])
             ], className="mb-4", outline=True, color="secondary"),
@@ -189,7 +198,7 @@ daily_info_layout = dbc.Container([
 ], fluid=True, style={"backgroundColor": "#f7f7f7", "padding": "20px"})
 
 # -----------------------------------
-# 3. Build multi-page app layout with routing
+# 3. 构建多页面路由布局
 # -----------------------------------
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY], suppress_callback_exceptions=True)
 server = app.server
@@ -214,7 +223,7 @@ app.layout = html.Div([
 ], style={"backgroundColor": "#e9ecef"})
 
 # -----------------------------------
-# 4. Page routing callback
+# 4. 页面路由回调
 # -----------------------------------
 @app.callback(Output("page-content", "children"),
               Input("url", "pathname"))
@@ -230,7 +239,7 @@ def display_page(pathname):
         return global_layout
 
 # -----------------------------------
-# 5. Callback for updating global dashboard graphs
+# 5. Global Dashboard 图表更新回调
 # -----------------------------------
 @app.callback(
     [Output("cumulative-graph", "figure"),
@@ -248,7 +257,7 @@ def update_global_graphs(selected_countries, start_date, end_date):
         (df_grouped["Country/Region"].isin(selected_countries))
     )
     filtered = df_grouped[mask]
-    
+
     fig_cum = go.Figure()
     for country in selected_countries:
         country_data = filtered[filtered["Country/Region"] == country]
@@ -278,7 +287,7 @@ def update_global_graphs(selected_countries, start_date, end_date):
         font=dict(size=12),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    
+
     fig_daily = go.Figure()
     for country in selected_countries:
         country_data = filtered[filtered["Country/Region"] == country]
@@ -308,11 +317,11 @@ def update_global_graphs(selected_countries, start_date, end_date):
         font=dict(size=12),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    
+
     return fig_cum, fig_daily
 
 # -----------------------------------
-# 6. Callback for updating Daily Info table 
+# 6. Daily Info 表格更新回调（最近 30 天数据）
 # -----------------------------------
 @app.callback(
     Output("daily-info-table", "data"),
@@ -321,8 +330,8 @@ def update_global_graphs(selected_countries, start_date, end_date):
 def update_daily_info(selected_country):
     if not selected_country:
         return []
-    today = pd.Timestamp('today').normalize()
-    one_month_ago = today - pd.Timedelta(days=30)
+ 
+    one_month_ago = latest_date - pd.Timedelta(days=30)
     df_last_month = df_grouped[df_grouped["Date"] >= one_month_ago]
     if isinstance(selected_country, str):
         df_daily = df_last_month[df_last_month["Country/Region"] == selected_country].copy()
@@ -331,8 +340,8 @@ def update_daily_info(selected_country):
     return df_daily.to_dict('records')
 
 # -----------------------------------
-# 7. Callback for updating Real-Time Country Summary and Detailed Bar Chart on Daily Info page
-# 使用 API 调用实时数据获取国家实时摘要，每 60 秒更新一次；右侧条形图显示过去 7 天数据（不变）
+# 7. Daily Info 页面：实时国家摘要和右侧条形图更新回调
+# 使用 disease.sh API 调用实时数据获取国家实时摘要，每 60 秒更新；右侧条形图调用 disease.sh 历史接口获取过去 7 天数据
 # -----------------------------------
 @app.callback(
     [Output("real-time-summary-graph", "figure"),
@@ -343,7 +352,7 @@ def update_daily_info(selected_country):
 def update_real_time_summary_and_bar(selected_country, n):
     if not selected_country:
         return go.Figure(), go.Figure()
- 
+                         
     url = f"https://disease.sh/v3/covid-19/countries/{selected_country}?strict=true"
     try:
         r = requests.get(url)
@@ -371,38 +380,60 @@ def update_real_time_summary_and_bar(selected_country, n):
         )])
     
 
-    df_country = df_grouped[df_grouped["Country/Region"] == selected_country]
-    if df_country.empty:
-        fig_bar = go.Figure()
-    else:
-        max_date_for_country = df_country["Date"].max()
-        one_week_ago = max_date_for_country - pd.Timedelta(days=6)
-        df_recent = df_country[df_country["Date"] >= one_week_ago]
-        fig_bar = go.Figure()
-        fig_bar.add_trace(go.Bar(
-            x=df_recent["Date"],
-            y=df_recent["New_Confirmed"],
-            name="New Confirmed"
-        ))
-        fig_bar.add_trace(go.Bar(
-            x=df_recent["Date"],
-            y=df_recent["New_Deaths"],
-            name="New Deaths"
-        ))
-        fig_bar.add_trace(go.Bar(
-            x=df_recent["Date"],
-            y=df_recent["New_Recovered"],
-            name="New Recovered"
-        ))
-        fig_bar.update_layout(
-            title=f"{selected_country} New Cases Trend (Last 7 Days)",
-            xaxis_title="Date",
-            yaxis_title="Daily New Count",
-            barmode="group",
-            template="plotly_white"
-        )
+    hist_url = f"https://disease.sh/v3/covid-19/historical/{selected_country}?lastdays=8"
+    try:
+        r_hist = requests.get(hist_url)
+        if r_hist.status_code != 200:
+            new_bar_fig = go.Figure()
+        else:
+            hist_data = r_hist.json()
+            timeline = hist_data.get("timeline", {})
+            cases = timeline.get("cases", {})
+            deaths = timeline.get("deaths", {})
+            recovered = timeline.get("recovered", {})
+      
+            df_hist = pd.DataFrame({
+                "Date": pd.to_datetime(list(cases.keys()), format="%m/%d/%y"),
+                "Confirmed": list(cases.values()),
+                "Deaths": list(deaths.values()),
+                "Recovered": list(recovered.values())
+            }).sort_values("Date")
+            if df_hist.shape[0] < 2:
+                new_bar_fig = go.Figure()
+            else:
+       
+                df_hist["New_Confirmed"] = df_hist["Confirmed"].diff().fillna(df_hist["Confirmed"])
+                df_hist["New_Deaths"] = df_hist["Deaths"].diff().fillna(df_hist["Deaths"])
+                df_hist["New_Recovered"] = df_hist["Recovered"].diff().fillna(df_hist["Recovered"])
+         
+                df_recent = df_hist.iloc[-7:]
+                new_bar_fig = go.Figure()
+                new_bar_fig.add_trace(go.Bar(
+                    x=df_recent["Date"],
+                    y=df_recent["New_Confirmed"],
+                    name="New Confirmed"
+                ))
+                new_bar_fig.add_trace(go.Bar(
+                    x=df_recent["Date"],
+                    y=df_recent["New_Deaths"],
+                    name="New Deaths"
+                ))
+                new_bar_fig.add_trace(go.Bar(
+                    x=df_recent["Date"],
+                    y=df_recent["New_Recovered"],
+                    name="New Recovered"
+                ))
+                new_bar_fig.update_layout(
+                    title=f"{selected_country} New Cases Trend (Last 7 Days)",
+                    xaxis_title="Date",
+                    yaxis_title="Daily New Count",
+                    barmode="group",
+                    template="plotly_white"
+                )
+    except Exception as e:
+        new_bar_fig = go.Figure()
     
-    return summary_fig, fig_bar
+    return summary_fig, new_bar_fig
 
 # -----------------------------------
 # 8. Callback for updating global heatmap
